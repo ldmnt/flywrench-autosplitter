@@ -14,6 +14,14 @@ state("FlywrenchStudio")
 
     // 1 = new game/continue, 3 = time trial
     double mode : "FlywrenchStudio.exe", 0x310fa4, 0x0, 0x3e0, 0xc, 0xac, 0x8, 0xc8, 0x7c, 0x0, 0x8;
+
+    // cumulated number of beaten levels on all planets
+    uint beatenLevels : "FlywrenchStudio.exe", 0x51ef34, 0x2c, 0x4;
+
+    // number of locked themes
+    // uint lockedThemes : "FlywrenchStudio.exe", 0x51ef34, 0x48, 0x4;
+
+    string25 currentLevel : "FlywrenchStudio.exe", 0x310fa4, 0x0, 0x3e0, 0xc, 0xac, 0x8, 0xc8, 0x68, 0x8, 0x0;
 }
 
 startup
@@ -29,18 +37,31 @@ init
         var ticks = (long) (t / 60 * 10000000);
         return new TimeSpan(ticks);
     });
+
+    vars.thresholds = new uint[] { 21, 42, 67, 85, 105, 123, 142, 165, 186, 187 };
+
+    vars.updateLevelCountForNextSplit = (Func<uint, uint>) (beaten =>
+    {
+        foreach (uint t in vars.thresholds)
+        {
+            if (beaten < t) { print("Set next split to : " + t.ToString()); return t; }
+        }
+        return 188;
+    });
+    vars.levelCountForNextSplit = vars.updateLevelCountForNextSplit(current.beatenLevels);
+
+    vars.planetsDone = 0;
 }
 
 gameTime
-{
+{    
+    if (old.currentLevel != current.currentLevel) { print("Current level : " + current.currentLevel); }
     if ((int) current.mode == 3)
     {
-        print("timeTrialTime: " + current.timeTrialTime.ToString());
         return vars.toTimeSpan(current.timeTrialTime);
     }
     else
     {
-        print("totalTime: " + current.totalTime.ToString());
         return vars.toTimeSpan(current.totalTime);
     }
 }
@@ -53,7 +74,15 @@ start
     }
     else
     {
-        return old.totalTime <= 0 && current.totalTime > 0;
+        if (old.totalTime <= 0 && current.totalTime > 0)
+        {
+            vars.levelCountForNextSplit = vars.updateLevelCountForNextSplit(current.beatenLevels);
+            return true;
+        }
+        else 
+        {
+            return false;
+        }
     }
 }
 
@@ -65,7 +94,40 @@ reset
     }
     else
     {
-        return old.totalTime > 0 && current.totalTime <= 0;
+        if (old.totalTime > 0 && current.totalTime <= 0 && (old.beatenLevels < current.beatenLevels || current.beatenLevels == 0))
+        {
+            print("Reset triggered");
+            vars.levelCountForNextSplit = vars.updateLevelCountForNextSplit(0);
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+}
+
+split
+{
+    if ((int) current.mode == 3)
+    {
+        return current.beatenLevels > old.beatenLevels;
+    }
+    else
+    {
+        if (current.beatenLevels > old.beatenLevels) 
+        {
+            print("beatenLevels increased -- beatenLevels, nextSplit = " + current.beatenLevels.ToString() + ", " + vars.levelCountForNextSplit.ToString());
+        }
+        if (current.beatenLevels > old.beatenLevels && current.beatenLevels == vars.levelCountForNextSplit)
+        {
+            vars.levelCountForNextSplit = vars.updateLevelCountForNextSplit(current.beatenLevels);
+            return true;
+        }
+        else
+        {
+            return false;
+        }
     }
 }
 
