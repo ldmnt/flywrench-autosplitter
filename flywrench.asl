@@ -44,18 +44,60 @@ init
     {
         foreach (uint t in vars.thresholds)
         {
-            if (beaten < t) { print("Set next split to : " + t.ToString()); return t; }
+            if (beaten < t) { return t; }
         }
         return 188;
     });
     vars.levelCountForNextSplit = vars.updateLevelCountForNextSplit(current.beatenLevels);
 
-    vars.planetsDone = 0;
+    // trick to avoid false positives on changes : use flags that switch only after 3 stable frames
+    vars.currentLevelStabilizer = 4;
+    vars.timeTrialTimeStabilizer = 4;
+}
+
+update
+{
+	vars.currentLevelChanged = false;
+	if (old.currentLevel != current.currentLevel)
+	{
+		vars.currentLevelStabilizer = 0;
+	}
+	else if (vars.currentLevelStabilizer < 3)
+	{
+		vars.currentLevelStabilizer += 1;
+	}
+	else if (vars.currentLevelStabilizer == 3)
+	{
+		vars.currentLevelStabilizer += 1;
+		vars.currentLevelChanged = true;
+	}
+
+	vars.timeTrialTimeReset = false;
+	if (current.timeTrialTime < old.timeTrialTime) 
+	{
+		vars.timeTrialTimeStabilizer = 0;
+	}
+	else if (current.timeTrialTime < 20)
+	{
+		if (vars.timeTrialTimeStabilizer < 3)
+		{
+			vars.timeTrialTimeStabilizer += 1;
+		}
+		else if (vars.timeTrialTimeStabilizer == 3)
+		{
+			vars.timeTrialTimeStabilizer += 1;
+			vars.timeTrialTimeReset = true;
+		}
+	}
+	else
+	{
+		vars.timeTrialTimeStabilizer = 4;
+	}
+	
 }
 
 gameTime
 {    
-    if (old.currentLevel != current.currentLevel) { print("Current level : " + current.currentLevel); }
     if ((int) current.mode == 3)
     {
         return vars.toTimeSpan(current.timeTrialTime);
@@ -90,13 +132,12 @@ reset
 {
     if ((int) current.mode == 3)
     {
-        return current.timeTrialTime < old.timeTrialTime;  // time trial time only resets when starting a new time trial
+        return vars.timeTrialTimeReset;  // time trial time only resets when starting a new time trial
     }
     else
     {
         if (old.totalTime > 0 && current.totalTime <= 0 && (old.beatenLevels < current.beatenLevels || current.beatenLevels == 0))
         {
-            print("Reset triggered");
             vars.levelCountForNextSplit = vars.updateLevelCountForNextSplit(0);
             return true;
         }
@@ -111,14 +152,10 @@ split
 {
     if ((int) current.mode == 3)
     {
-        return current.beatenLevels > old.beatenLevels;
+        return vars.currentLevelChanged;
     }
     else
     {
-        if (current.beatenLevels > old.beatenLevels) 
-        {
-            print("beatenLevels increased -- beatenLevels, nextSplit = " + current.beatenLevels.ToString() + ", " + vars.levelCountForNextSplit.ToString());
-        }
         if (current.beatenLevels > old.beatenLevels && current.beatenLevels == vars.levelCountForNextSplit)
         {
             vars.levelCountForNextSplit = vars.updateLevelCountForNextSplit(current.beatenLevels);
